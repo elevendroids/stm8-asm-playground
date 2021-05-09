@@ -1,0 +1,3 @@
+[submodule "lib/stm8-asm-lib"]
+	path = lib/stm8-asm-lib
+	url = ../stm8-asm-lib
