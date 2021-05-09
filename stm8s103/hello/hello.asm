@@ -22,9 +22,9 @@ start:
 get_next_char:
     ld      A, (X)                          ; read the character at X
     jreq    end                             ; check for null terminator, end when we're done
+wait_tx_buf:
+    btjf    UART1_SR, #7, wait_tx_buf       ; wait until the TX buffer is empty (TXE bit is set)
     ld      UART1_DR, A                     ; copy the character to UART's data register
-wait_for_tx:
-    btjf    UART1_SR, #7, wait_for_tx       ; wait until TXE is set
     incw    X                               ; increment the character address
     jp      get_next_char                   ; send next character
 
