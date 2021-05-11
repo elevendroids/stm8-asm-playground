@@ -34,89 +34,71 @@ start:
     bset    UART1_CR2, #3                   ; Enable UART transmitter
 
     ldw     X, #title                       ; load the start address of the string
-    pushw   X                               ; store it on the stack (as a function param)
     call    uart1_write_str                 ; print it out
-    popw    X                               ; clean the stack
 
-    ldw     X, #U_ID                        ; load the start address of the UID
+    ldw     Y, #U_ID                        ; load the start address of the UID
+                                            ; note that we use Y here as X is clobbered by print_hex_digit
 next_byte:
-    ld      A, (X)                          ; load the byte
+    ld      A, (Y)                          ; load the byte
 ; print the high nibble
     swap    A                               ; swap the high and low nibbles
-    and     A, #0x0F                        ; mask-out the high nibble
-    push    A                               ; store the nibble as a function param
     call    print_hex_digit                 ; print it out
-    pop     A                               ; clean the stack
 ; print the low nibble
-    ld      A, (X)                          ; re-load the byte
-    and     A, #0x0F                        ; mask-out the high nibble
-    push    A                               ; store the nibble as a function param
+    ld      A, (Y)                          ; re-load the byte (print_hex_digit modifies the accumulator)
     call    print_hex_digit                 ; print it out
-    pop     A                               ; clean the stack
 
-    cpw     X, #(U_ID + U_ID_SIZE)          ; check if this was the last UID byte
-    jreq    end                             ; jump out to the end if so
-    incw    X                               ; increment the byte address
-    jp      next_byte                       ; process the next one
+    incw    Y                               ; increment the byte address
+    cpw     Y, #(U_ID + U_ID_SIZE)          ; check if we're not past the last UID byte
+    jrule   next_byte                       ; process the next one if so
 
-end:
 ; print a newline sequence at the end
     ldw     X, #crlf                        ; load the start address of the CRLF string
-    pushw   X                               ; store it on the stack (as a function param)
     call    uart1_write_str                 ; print the string
-loop:
-    jp loop                                 ; loop forever
+exit:
+    jp      exit                             ; loop forever
 
 ;
 ; Helper functions
 ;
 
 ;
-; Prints out a single hexadecimal digit
-; Params on stack:
-; - single 4-bit (0-15) value to print out
+; Prints out a single hexadecimal digit (low byte nibble)
+;
+; Params:
+; A - byte value to print out
+;
+; Clobbers:
+; A, X
 ;
 .func print_hex_digit
-    ld      A, (0x03, SP)                   ; load the nibble value
-    cp      A, #10                          ; digit (0-9) or letter (A-F) ?
-    jruge   hex_letter                      ; jump forward if we need a letter (val >= 10)
-    add     A, #'0'                         ; compute the digit character (0-9)
-    jp      print                           ; jump to the print routine
-hex_letter:
-    add     A, #('A' - 10)                  ; compute the letter character (A-F)
+    and     A, #0x0F                        ; mask-out the high nibble
+    clrw    X                               ; clear the index register
+    ld      XL, A                           ; load the nibble into lower X
+    ld      A, (hex_lut, X)                 ; load the matching hex digit from the LUT: A <= hex_lut[X]
 print:
-    push    A                               ; store the character for the uart1_write function
-    call    uart1_write                     ; print it out
-    pop     A                               ; clean the stack
+    btjf    UART1_SR, #7, print             ; wait for the TX buffer to be empty
+    ld      UART1_DR, A                     ; print out the character
     ret
-.endf
-
-;
-; Writes a single byte on UART1
-; Params on stack:
-; - a byte to transmit
-;
-.func uart1_write
-    ld      A, (0x03, SP)
-wait_tx_buf:
-    btjf    UART1_SR, #7, wait_tx_buf
-    ld      UART1_DR, A
-    ret
+; hex digit lookup table
+hex_lut:    .ascii  "0123456789ABCDEF"
 .endf
 
 ;
 ; Writes a null-terminated string on UART1
-; Params on stack:
-; - a 16-bit address of the string
+;
+; Params:
+; X - a 16-bit address of the string
+;
+; Clobbers:
+; A, X
 ;
 .func uart1_write_str
-    ldw     X, (0x03, SP)
 next_char:
     ld      A, (X)                          ; read the character at X
     jreq    exit                            ; check for null terminator, end when we're done
 wait_tx_buf:
-    btjf    UART1_SR, #7, wait_tx_buf
-    ld      UART1_DR, A
+    btjf    UART1_SR, #7, wait_tx_buf       ; wait until TX buffer is empty
+    ld      UART1_DR, A                     ; print out the character
     incw    X                               ; increment the character address
     jp      next_char                       ; process next character
 exit:
