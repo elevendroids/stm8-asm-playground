@@ -26,9 +26,8 @@ start:
     bset    PB_CR1, #LED        ; set the LED pin as push-pull
     bset    PB_CR2, #LED        ; set the output speed to high (<= 10MHz)
 
-    push    #DELAY              ; DELAY low byte
-    push    #0                  ; DELAY high byte
 loop:
+    ldw     X, #DELAY           ; load the blink interval
     call delay_ms               ; wait for the DELAY ms
     bcpl    PB_ODR, #LED        ; toggle the LED pin
     jp loop                     ; loop forever
